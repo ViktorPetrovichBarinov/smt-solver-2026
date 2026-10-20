@@ -49,7 +49,28 @@ class CongruenceSolver(EqTheorySolver):
         self.disequalities.append((a, b))
 
     def check(self):
-        raise NotImplementedError()
+        for a, b in self.equalities:
+            self.union(a, b)
+
+        changed = True
+        while changed:
+            changed = False
+            representatives = {}
+            for t in self.terms.values():
+                if t.num_args() == 0:
+                    continue
+                key = (t.decl().get_id(), tuple(self.find(c) for c in t.children()))
+                previous = representatives.get(key)
+                if previous is None:
+                    representatives[key] = t
+                elif self.find(previous) != self.find(t):
+                    self.union(previous, t)
+                    changed = True
+
+        for a, b in self.disequalities:
+            if self.find(a) == self.find(b):
+                return unsat
+        return sat
 
 
 def CongruenceSolver_test1():
