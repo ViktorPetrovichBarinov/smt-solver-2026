@@ -1,16 +1,65 @@
+from itertools import count
+
 from z3 import *
 from common import check_formulas, Solver_test_files
 
 
 def array_to_euf(formulas):
     """
-    Реализуйте: по списку формул над EUF и массивами без равенств массивов верните эквивыполнимый
-    список формул в EUF — без термов сорта массив (в частности, без `select` и `store`).
-
-    Полезное из API z3: `is_select(t)`, `is_store(t)`, `t.arg(i)`, `Select(A, y)`, `If(c, a, b)`,
-    `Function(name, *sorts)`, `A.domain()`, `A.range()`
+    Устраняет массивы из формул: `select` от `store` раскрывается через `If`, а выборка
+    из базового массива заменяется применением свежей неинтерпретированной функции.
     """
-    raise NotImplementedError()
+    select_functions = {}  # номер терма-массива -> функция выбора
+    array_constants = {}   # номер терма-массива -> свежая константа
+    memo = {}
+    counter = count()
+
+    def select_function(array):
+        key = array.get_id()
+        if key not in select_functions:
+            sort = array.sort()
+            name = f"__select_{next(counter)}"
+            select_functions[key] = Function(name, sort.domain(), sort.range())
+        return select_functions[key]
+
+    def array_constant(array):
+        key = array.get_id()
+        if key not in array_constants:
+            array_constants[key] = FreshConst(array.sort(), "__array")
+        return array_constants[key]
+
+    def read(array, index):
+        """Значение `select(array, index)` с учётом аксиом read-over-write"""
+        if is_store(array):
+            return If(index == go(array.arg(1)),
+                      go(array.arg(2)),
+                      read(array.arg(0), index))
+        if is_app_of(array, Z3_OP_ITE) and is_array(array):
+            return If(go(array.arg(0)),
+                      read(array.arg(1), index),
+                      read(array.arg(2), index))
+        base = go(array)
+        return select_function(base)(index)
+
+    def go(term):
+        key = term.get_id()
+        if key in memo:
+            return memo[key]
+
+        if is_select(term):
+            result = read(term.arg(0), go(term.arg(1)))
+        elif is_app(term) and term.num_args() > 0:
+            result = term.decl()(*[go(c) for c in term.children()])
+        else:
+            result = term
+
+        if is_array(result):
+            result = array_constant(result)
+
+        memo[key] = result
+        return result
+
+    return [go(formula) for formula in formulas]
 
 
 def rewrite(e, f):

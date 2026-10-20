@@ -48,6 +48,7 @@ class CongruenceSolver(EqTheorySolver):
         self.register(b)
         self.disequalities.append((a, b))
 
+    #s1 = t1, ..., sn = tn  =>  f(s1..sn) = f(t1..tn)
     def check(self):
         for a, b in self.equalities:
             self.union(a, b)

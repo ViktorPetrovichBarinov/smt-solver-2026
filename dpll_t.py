@@ -50,7 +50,28 @@ class DPLL_T_Solver:
             self.prop_solver.add(self.T2B(f))
 
     def check(self):
-        raise NotImplementedError()
+        while True:
+            prop_result = self.prop_solver.check()
+            if prop_result != sat:
+                return prop_result
+
+            model = self.prop_solver.model()
+            theory = self.theory_solver()
+            theory.add(*self.B2T(model))
+            theory_result = theory.check()
+            if theory_result == sat:
+                return sat
+            if theory_result != unsat:
+                return theory_result
+
+            blocking = []
+            for literal in theory.unsat_core():
+                atom = literal.arg(0) if is_not(literal) else literal
+                variable = self.atoms[atom.get_id()][1]
+                blocking.append(variable if is_not(literal) else Not(variable))
+            if not blocking:
+                return unsat
+            self.prop_solver.add(Or(*blocking))
 
 
 class TheorySolver:
